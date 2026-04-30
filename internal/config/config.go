@@ -13,11 +13,11 @@ import (
 
 // DBType constants
 const (
-	DBMySQL      = "mysql"
-	DBOceanBase  = "oceanbase"
-	DBGaussDB    = "gaussdb"
-	DBKingbase   = "kingbase"
-	DBDameng     = "dameng"
+	DBMySQL     = "mysql"
+	DBOceanBase = "oceanbase"
+	DBGaussDB   = "gaussdb"
+	DBKingbase  = "kingbase"
+	DBDameng    = "dameng" // native DM protocol
 )
 
 // Config holds all connection parameters.
@@ -177,7 +177,12 @@ func (c *Config) EffectiveHost() string {
 
 // IsMySQLCompatible returns true for MySQL-wire databases.
 func (c *Config) IsMySQLCompatible() bool {
-	return c.DBType == DBMySQL || c.DBType == DBOceanBase || c.DBType == DBDameng
+	return c.DBType == DBMySQL || c.DBType == DBOceanBase
+}
+
+// IsDamengNative returns true for native DM-protocol Dameng databases.
+func (c *Config) IsDamengNative() bool {
+	return c.DBType == DBDameng
 }
 
 // IsPgCompatible returns true for PostgreSQL-wire databases.

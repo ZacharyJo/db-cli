@@ -10,7 +10,7 @@
 |--------|------|--------|
 | MySQL / MariaDB | MySQL wire | `connect` / `exec` / `import` |
 | OceanBase | MySQL wire | `connect` / `exec` / `import` |
-| 达梦（DM8） | MySQL wire | `connect` / `exec` / `import` |
+| 达梦（DM8） | DM wire（`-t dameng`） | `connect` / `exec` / `import` |
 | GaussDB / openGauss | PostgreSQL wire | `connect` / `exec` / `import` |
 | KingbaseDB | PostgreSQL wire | `connect` / `exec` / `import` |
 | Redis | Redis 协议 | `redis` / `redis exec` |
@@ -58,10 +58,10 @@ db-cli connect --profile prod-cluster
 |------|------|
 | `\q`、`\quit` | 退出 |
 | `\h`、`\help` | 显示帮助 |
-| `\d` | 列出所有数据库 |
-| `\dt` | 列出当前库的所有表 |
-| `\dn` | 列出所有 Schema（仅 PostgreSQL wire：gaussdb、kingbase） |
-| `\c [DBNAME]` | 切换到指定数据库（不带参数则显示当前库名） |
+| `\d` | 列出所有数据库；达梦：列出所有用户/schema |
+| `\dt` | 列出当前库的所有表；达梦：列出当前用户下的所有表 |
+| `\dn` | 列出所有 Schema（PG wire：gaussdb、kingbase；达梦：同 `\d`） |
+| `\c [NAME]` | 切换数据库；达梦：切换 schema（`SET SCHEMA`） |
 | `\timing` | 开关查询计时 |
 | `\output FORMAT` | 设置输出格式：`table` \| `json` \| `csv` |
 | `\e` | 用 `$EDITOR` 编辑 SQL |
@@ -71,14 +71,16 @@ db-cli connect --profile prod-cluster
 
 ```bash
 db-cli exec --type mysql   -H 127.0.0.1 -u root  -p secret "SELECT version()"
+db-cli exec --type dameng  -H 127.0.0.1 -P 5236 -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
 db-cli exec --type gaussdb -H 10.0.0.1  -u admin -p secret "SELECT current_database()"
 ```
 
 ### SQL 文件导入（`import`）
 
 ```bash
-db-cli import --type mysql     -H 127.0.0.1 -u root -p secret -d mydb ./dump.sql
-db-cli import --type oceanbase -H 10.0.0.1  -u app  -p secret -d mydb ./schema.sql --stop-on-error
+db-cli import --type mysql     -H 127.0.0.1 -u root  -p secret -d mydb ./dump.sql
+db-cli import --type dameng    -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA ./schema.sql
+db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema.sql --stop-on-error
 ```
 
 **导入参数：**
@@ -108,6 +110,25 @@ db-cli redis -H 10.0.0.1  -P 6379 --password secret --db 1
 | `\h`、`\help` | 显示帮助 |
 | `\d` | 显示键空间信息（`INFO keyspace`） |
 | `\c N` | 切换到 Redis 数据库 N（`SELECT N`） |
+
+#### 哨兵模式（主从）
+
+```bash
+db-cli redis --mode sentinel \
+  --addrs 10.0.0.1:26379,10.0.0.2:26379,10.0.0.3:26379 \
+  --master-name mymaster \
+  --password secret
+```
+
+#### 集群模式
+
+```bash
+db-cli redis --mode cluster \
+  --addrs 10.0.0.1:7000,10.0.0.2:7001,10.0.0.3:7002 \
+  --password secret
+```
+
+> **注意：** `--db` 和 `\c`（SELECT）仅在 `single` 模式下可用。`sentinel` 模式支持 `--db`。`cluster` 模式下所有 key 共享单一逻辑 keyspace，不支持 SELECT。
 
 ### Redis — 一次性执行
 
@@ -211,7 +232,7 @@ type     = "dameng"
 host     = "127.0.0.1"
 port     = 5236
 user     = "SYSDBA"
-password = "SYSDBA"
+password = "SYSDBA001"
 database = "SYSDBA"
 
 [gaussdb-dev]
@@ -226,6 +247,44 @@ database = "devdb"
 ```bash
 db-cli connect --profile prod-cluster
 db-cli exec    --profile gaussdb-dev "SELECT version()"
+```
+
+## 达梦（DM8）使用说明
+
+达梦采用 Oracle 风格的 schema 模型，与 MySQL/PostgreSQL 有以下差异：
+
+### Schema 与用户
+
+达梦没有独立的"数据库"概念，用户名即 schema 名。连接时 `-d` 参数填写用户名（schema）：
+
+```bash
+db-cli connect -t dameng -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA
+```
+
+### 元命令行为
+
+| 命令 | 行为 |
+|------|------|
+| `\d` | 列出所有用户（`DBA_USERS`） |
+| `\dt` | 列出当前用户下的所有表（`ALL_TABLES WHERE OWNER=USER`） |
+| `\dn` | 同 `\d` |
+| `\c NAME` | 切换到指定 schema（`SET SCHEMA "NAME"`） |
+
+### 常用系统查询
+
+```sql
+-- 查看版本
+SELECT * FROM V$VERSION;
+
+-- 查看当前用户
+SELECT USER FROM DUAL;
+
+-- 查看所有表
+SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE OWNER = USER ORDER BY TABLE_NAME;
+
+-- 查看表结构
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
+FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = 'YOUR_TABLE' AND OWNER = USER;
 ```
 
 ## 环境变量

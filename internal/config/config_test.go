@@ -87,11 +87,21 @@ func TestEffectiveHost_HostPort(t *testing.T) {
 }
 
 func TestIsMySQLCompatible(t *testing.T) {
-	for _, dbType := range []string{"mysql", "oceanbase", "dameng"} {
+	for _, dbType := range []string{"mysql", "oceanbase"} {
 		cfg := &config.Config{DBType: dbType}
 		if !cfg.IsMySQLCompatible() {
 			t.Errorf("%s should be MySQL-compatible", dbType)
 		}
+	}
+}
+
+func TestIsDamengNative(t *testing.T) {
+	cfg := &config.Config{DBType: "dameng"}
+	if !cfg.IsDamengNative() {
+		t.Errorf("dameng should be native DM protocol")
+	}
+	if cfg.IsMySQLCompatible() {
+		t.Errorf("dameng should not be MySQL-compatible")
 	}
 }
 

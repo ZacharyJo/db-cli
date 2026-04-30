@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-04-30
+
+### Added
+- **Redis Sentinel support**: `--mode sentinel --addrs host:port,... --master-name NAME` for primary/replica failover clusters
+- **Redis Cluster support**: `--mode cluster --addrs host:port,...` for sharded clusters
+- `--addrs` flag for Redis: specify multiple node addresses (overrides `-H`/`-P`); `-H`/`-P` remain backward-compatible for single mode
+- `import`: follow `USE dbname` statements and switch the active connection to the new database mid-import
+- `import --create-db`: now also auto-creates databases encountered in `USE dbname` statements
+
+### Fixed
+- Redis: `\c N` (SELECT) now works correctly by rebuilding the client instead of reusing pool state
+- Redis: `formatValue` handles `map[string]interface{}` responses (RESP3 protocol)
+- Redis: `--mode` flag validates value; unsupported modes print a clear error
+- importer: connection pool leak when `USE dbname` reconnect fails during `acquireConn` (newDB is now closed and state is restored)
+- importer: `StopOnError` is now honoured after a failed `USE dbname` switch
+- importer: verbose `SKIP>` log when `USE dbname` is encountered but no reconnect is configured
+
+---
+
 ## [2.0.0] - 2026-04-30
 
 ### Breaking Changes

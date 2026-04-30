@@ -10,7 +10,7 @@ A unified command-line tool for connecting to and querying multiple databases �
 |----------|----------|------------|
 | MySQL / MariaDB | MySQL wire | `connect` / `exec` / `import` |
 | OceanBase | MySQL wire | `connect` / `exec` / `import` |
-| Dameng (DM8) | MySQL wire | `connect` / `exec` / `import` |
+| Dameng (DM8) | DM wire (`-t dameng`) | `connect` / `exec` / `import` |
 | GaussDB / openGauss | PostgreSQL wire | `connect` / `exec` / `import` |
 | KingbaseDB | PostgreSQL wire | `connect` / `exec` / `import` |
 | Redis | Redis protocol | `redis` / `redis exec` |
@@ -58,10 +58,10 @@ Type SQL and terminate with `;` to execute. Multi-line input is supported.
 |---------|-------------|
 | `\q`, `\quit` | Exit |
 | `\h`, `\help` | Show help |
-| `\d` | List databases |
-| `\dt` | List tables in current database |
-| `\dn` | List schemas (PostgreSQL-wire only: gaussdb, kingbase) |
-| `\c [DBNAME]` | Switch to database (show current if omitted) |
+| `\d` | List databases; dameng: list users/schemas |
+| `\dt` | List tables in current database; dameng: tables owned by current user |
+| `\dn` | List schemas (PG wire: gaussdb, kingbase; dameng: same as `\d`) |
+| `\c [NAME]` | Switch database; dameng: switch schema (`SET SCHEMA`) |
 | `\timing` | Toggle query timing |
 | `\output FORMAT` | Set output format: `table` \| `json` \| `csv` |
 | `\e` | Open `$EDITOR` to compose SQL |
@@ -71,14 +71,16 @@ Type SQL and terminate with `;` to execute. Multi-line input is supported.
 
 ```bash
 db-cli exec --type mysql   -H 127.0.0.1 -u root  -p secret "SELECT version()"
+db-cli exec --type dameng  -H 127.0.0.1 -P 5236 -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
 db-cli exec --type gaussdb -H 10.0.0.1  -u admin -p secret "SELECT current_database()"
 ```
 
 ### SQL File Import (`import`)
 
 ```bash
-db-cli import --type mysql     -H 127.0.0.1 -u root -p secret -d mydb ./dump.sql
-db-cli import --type oceanbase -H 10.0.0.1  -u app  -p secret -d mydb ./schema.sql --stop-on-error
+db-cli import --type mysql     -H 127.0.0.1 -u root  -p secret -d mydb ./dump.sql
+db-cli import --type dameng    -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA ./schema.sql
+db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema.sql --stop-on-error
 ```
 
 **Import flags:**
@@ -108,6 +110,25 @@ Enter Redis commands directly (e.g. `GET mykey`, `SET foo bar`, `HGETALL myhash`
 | `\h`, `\help` | Show help |
 | `\d` | Show keyspace info (`INFO keyspace`) |
 | `\c N` | Switch to Redis database N (`SELECT N`) |
+
+#### Sentinel (Primary/Replica)
+
+```bash
+db-cli redis --mode sentinel \
+  --addrs 10.0.0.1:26379,10.0.0.2:26379,10.0.0.3:26379 \
+  --master-name mymaster \
+  --password secret
+```
+
+#### Cluster
+
+```bash
+db-cli redis --mode cluster \
+  --addrs 10.0.0.1:7000,10.0.0.2:7001,10.0.0.3:7002 \
+  --password secret
+```
+
+> **Note:** `--db` and `\c` (SELECT) are only available in `single` mode. In `sentinel` mode, `--db` is supported. In `cluster` mode, all keys reside in a single logical keyspace.
 
 ### Redis — One-shot Execution
 
@@ -211,7 +232,7 @@ type     = "dameng"
 host     = "127.0.0.1"
 port     = 5236
 user     = "SYSDBA"
-password = "SYSDBA"
+password = "SYSDBA001"
 database = "SYSDBA"
 
 [gaussdb-dev]
@@ -226,6 +247,44 @@ database = "devdb"
 ```bash
 db-cli connect --profile prod-cluster
 db-cli exec    --profile gaussdb-dev "SELECT version()"
+```
+
+## Dameng (DM8) Notes
+
+Dameng uses an Oracle-style schema model. Key differences from MySQL/PostgreSQL:
+
+### Schema and users
+
+Dameng has no separate "database" concept — the username is the schema name. Use the username as the `-d` value:
+
+```bash
+db-cli connect -t dameng -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA
+```
+
+### Meta-command behavior
+
+| Command | Behavior |
+|---------|----------|
+| `\d` | List all users (`DBA_USERS`) |
+| `\dt` | List tables owned by current user (`ALL_TABLES WHERE OWNER=USER`) |
+| `\dn` | Same as `\d` |
+| `\c NAME` | Switch to the named schema (`SET SCHEMA "NAME"`) |
+
+### Useful system queries
+
+```sql
+-- Version
+SELECT * FROM V$VERSION;
+
+-- Current user
+SELECT USER FROM DUAL;
+
+-- List tables
+SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE OWNER = USER ORDER BY TABLE_NAME;
+
+-- Table structure
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
+FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = 'YOUR_TABLE' AND OWNER = USER;
 ```
 
 ## Environment Variables

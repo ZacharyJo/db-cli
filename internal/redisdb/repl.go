@@ -35,7 +35,8 @@ func (r *REPL) Run() error {
 	defer rl.Close()
 
 	ctx := context.Background()
-	fmt.Printf("Connected to Redis @ %s:%d (db %d)\n", r.client.Host, r.client.Port, r.client.DB)
+	fmt.Printf("Connected to Redis [%s] @ %s (db %d)\n",
+		r.client.CurrentMode(), r.client.AddrString(), r.client.CurrentDB())
 	fmt.Println("Type commands directly (e.g. GET key), \\h for help, \\q to quit.")
 
 	for {
@@ -81,7 +82,7 @@ func (r *REPL) handleMeta(ctx context.Context, rl *readline.Instance, cmd string
 		}
 	case "\\c":
 		if len(parts) < 2 {
-			fmt.Printf("Current DB: %d\n", r.client.DB)
+			fmt.Printf("Current DB: %d (mode: %s)\n", r.client.CurrentDB(), r.client.CurrentMode())
 			return false
 		}
 		var db int
@@ -119,7 +120,7 @@ func (r *REPL) exec(ctx context.Context, line string) {
 }
 
 func (r *REPL) prompt() string {
-	return fmt.Sprintf("[redis@%s:%d/%d]> ", r.client.Host, r.client.Port, r.client.DB)
+	return fmt.Sprintf("[redis@%s/%d]> ", r.client.AddrString(), r.client.CurrentDB())
 }
 
 // SplitArgs splits a command line into tokens, respecting double-quoted strings.

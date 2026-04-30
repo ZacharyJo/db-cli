@@ -17,6 +17,13 @@ type Connector struct {
 	robin  uint64 // atomic counter for round-robin slave selection
 }
 
+// OpenSingleDB opens a single *sql.DB to the master host in cfg.
+// Intended for use cases that need a standalone connection (e.g. switching
+// databases during import) without the full Connector read/write split.
+func OpenSingleDB(cfg *config.Config) (*sql.DB, error) {
+	return openDB(cfg, cfg.EffectiveHost())
+}
+
 // Connect creates a Connector for the given Config.
 // It opens a master connection and all slave connections lazily verified with Ping.
 func Connect(cfg *config.Config) (*Connector, error) {
@@ -51,6 +58,10 @@ func openDB(cfg *config.Config, addr string) (*sql.DB, error) {
 	var driverName, dsn string
 
 	switch {
+	case cfg.IsDamengNative():
+		driverName = "dm"
+		dsn = BuildDamengDSN(cfg, addr)
+
 	case cfg.IsMySQLCompatible():
 		driverName = "mysql"
 		// Ensure TLS is registered before opening.

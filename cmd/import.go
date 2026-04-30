@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/ZacharyJo/db-cli/internal/config"
 	"github.com/ZacharyJo/db-cli/internal/db"
 	"github.com/ZacharyJo/db-cli/internal/importer"
 )
@@ -72,6 +74,14 @@ func runImport(_ *cobra.Command, args []string) error {
 		OnConflict:   importer.OnConflict(importOnConflict),
 		IgnoreErrors: importIgnoreErrors,
 		PgWire:       rootCfg.IsPgCompatible(),
+		CreateDB:     importCreateDB,
+		Cfg:          rootCfg,
+		OpenDB: func(cfg *config.Config) (*sql.DB, error) {
+			return db.OpenSingleDB(cfg)
+		},
+		EnsureDB: func(cfg *config.Config) error {
+			return db.EnsureDatabase(cfg)
+		},
 	}
 
 	count, errs := importer.Import(conn.WriteDB(), sqlFile, opts)

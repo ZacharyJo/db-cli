@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/schollz/progressbar/v3"
+	"github.com/ZacharyJo/db-cli/internal/config"
 )
 
 // OnConflict controls how INSERT conflicts are handled.
@@ -28,12 +29,17 @@ type Options struct {
 	OnConflict   OnConflict // conflict resolution strategy for INSERT
 	IgnoreErrors bool       // skip all errors and continue (errors still reported at end)
 	PgWire       bool       // true when target is PostgreSQL-wire (affects INSERT rewrite syntax)
+	CreateDB     bool       // auto-create databases encountered in USE statements
+	Cfg          *config.Config // used to reconnect on USE dbname
+	OpenDB       func(cfg *config.Config) (*sql.DB, error) // injected by caller
+	EnsureDB     func(cfg *config.Config) error            // injected by caller (optional)
 }
 
 // Import streams-parses sqlFile and executes each statement on db.
 // It returns the number of successfully executed statements and any accumulated errors.
 // All statements are executed on a single dedicated connection so that session-level
 // state (e.g. SET search_path) is preserved across statements.
+// When a USE dbname statement is encountered, the connection is switched to that database.
 func Import(db *sql.DB, sqlFile string, opts Options) (int, []error) {
 	f, err := os.Open(sqlFile)
 	if err != nil {
@@ -46,15 +52,6 @@ func Import(db *sql.DB, sqlFile string, opts Options) (int, []error) {
 		return 0, []error{fmt.Errorf("stat %s: %w", sqlFile, err)}
 	}
 
-	// Acquire a dedicated connection so SET search_path and other session
-	// variables persist for the entire import.
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return 0, []error{fmt.Errorf("acquire connection: %w", err)}
-	}
-	defer conn.Close()
-
 	bar := progressbar.NewOptions64(
 		fi.Size(),
 		progressbar.OptionSetDescription("importing"),
@@ -65,7 +62,7 @@ func Import(db *sql.DB, sqlFile string, opts Options) (int, []error) {
 	)
 
 	pr := &progressReader{r: f, bar: bar}
-	count, errs := execStatements(ctx, conn, pr, opts)
+	count, errs := execStatements(db, pr, opts)
 	fmt.Println() // newline after progress bar
 	return count, errs
 }
@@ -85,12 +82,67 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 }
 
 // execStatements parses SQL statements from r and executes them on conn.
-func execStatements(ctx context.Context, conn *sql.Conn, r io.Reader, opts Options) (int, []error) {
+// When a USE dbname statement is found, it reconnects to the new database.
+func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 	var (
 		errs      []error
 		count     int
 		delimiter = ";"
+		currentDB = db // current pool; may be replaced on USE
+		fatalErr  bool // set by flushStmt when a non-ignorable error occurs
 	)
+
+	ctx := context.Background()
+
+	// acquireConn creates a dedicated connection from the given pool.
+	acquireConn := func(pool *sql.DB) (*sql.Conn, error) {
+		return pool.Conn(ctx)
+	}
+
+	conn, err := acquireConn(currentDB)
+	if err != nil {
+		return 0, []error{fmt.Errorf("acquire connection: %w", err)}
+	}
+	defer func() { conn.Close() }()
+
+	// switchDB reconnects to a different database. Called when USE dbname is seen.
+	switchDB := func(dbname string) error {
+		if opts.OpenDB == nil || opts.Cfg == nil {
+			// No reconnect capability — skip with a verbose hint.
+			if opts.Verbose {
+				fmt.Printf("SKIP> USE %s (no reconnect configured)\n", dbname)
+			}
+			return nil
+		}
+		newCfg := *opts.Cfg
+		newCfg.Database = dbname
+		// Optionally create the database if it doesn't exist.
+		if opts.CreateDB && opts.EnsureDB != nil {
+			if err := opts.EnsureDB(&newCfg); err != nil {
+				return fmt.Errorf("ensure database %q: %w", dbname, err)
+			}
+		}
+		newDB, err := opts.OpenDB(&newCfg)
+		if err != nil {
+			return fmt.Errorf("connect to database %q: %w", dbname, err)
+		}
+		// Close old connection and pool (if it differs from the original db).
+		conn.Close()
+		if currentDB != db {
+			currentDB.Close()
+		}
+		currentDB = newDB
+		newConn, err := acquireConn(newDB)
+		if err != nil {
+			// newDB is open but unusable — close it and restore invariant.
+			newDB.Close()
+			currentDB = db
+			return fmt.Errorf("acquire connection for %q: %w", dbname, err)
+		}
+		conn = newConn
+		fmt.Printf("Switched to database %q\n", dbname)
+		return nil
+	}
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MiB line buffer
@@ -115,11 +167,24 @@ func execStatements(ctx context.Context, conn *sql.Conn, r io.Reader, opts Optio
 			}
 			return
 		}
-		// Skip CREATE DATABASE — the target DB is already selected at connect time.
 		upper := strings.ToUpper(strings.TrimSpace(s))
+		// Skip CREATE DATABASE — handled by --create-db flag or ignored.
 		if strings.HasPrefix(upper, "CREATE DATABASE") {
 			if opts.Verbose {
 				fmt.Printf("SKIP> %s\n", s)
+			}
+			return
+		}
+		// Handle USE dbname — switch connection to the new database.
+		if strings.HasPrefix(upper, "USE ") {
+			dbname := strings.Trim(strings.TrimSpace(s[4:]), "`\"' \t\n;")
+			if dbname != "" {
+				if err := switchDB(dbname); err != nil {
+					errs = append(errs, fmt.Errorf("switch db error: %w", err))
+					if !opts.IgnoreErrors {
+						fatalErr = true
+					}
+				}
 			}
 			return
 		}
@@ -233,7 +298,7 @@ func execStatements(ctx context.Context, conn *sql.Conn, r io.Reader, opts Optio
 			if strings.HasPrefix(line[i:], delimiter) {
 				flushStmt()
 				i += len(delimiter) - 1 // -1 because loop will do i++
-				if opts.StopOnError && !opts.IgnoreErrors && len(errs) > 0 {
+				if (opts.StopOnError && !opts.IgnoreErrors && len(errs) > 0) || fatalErr {
 					return count, errs
 				}
 				continue
@@ -246,11 +311,21 @@ func execStatements(ctx context.Context, conn *sql.Conn, r io.Reader, opts Optio
 		if stmt.Len() > 0 {
 			stmt.WriteByte('\n')
 		}
+
+		// A USE statement sets fatalErr without a delimiter — check after each line.
+		if fatalErr {
+			return count, errs
+		}
 	}
 
 	// Flush any remaining statement without trailing delimiter.
 	if s := strings.TrimSpace(stmt.String()); s != "" {
 		flushStmt()
+	}
+
+	// Close extra pools opened for USE switches.
+	if currentDB != db {
+		currentDB.Close()
 	}
 
 	if err := scanner.Err(); err != nil {

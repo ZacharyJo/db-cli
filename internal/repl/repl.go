@@ -170,7 +170,8 @@ func (r *REPL) execute(sql string) {
 }
 
 func (r *REPL) switchDatabase(dbname string) {
-	if r.cfg.IsPgCompatible() {
+	switch {
+	case r.cfg.IsPgCompatible():
 		// PG wire: must reconnect — connections are bound to a specific database.
 		newCfg := *r.cfg
 		newCfg.Database = dbname
@@ -182,7 +183,13 @@ func (r *REPL) switchDatabase(dbname string) {
 		r.conn.Close()
 		r.conn = newConn
 		r.cfg = &newCfg
-	} else {
+	case r.cfg.IsDamengNative():
+		// Dameng: SET SCHEMA switches the active schema on the existing connection.
+		if _, err := r.conn.WriteDB().Exec(`SET SCHEMA "` + dbname + `"`); err != nil {
+			fmt.Printf("ERROR: %v\n", err)
+			return
+		}
+	default:
 		// MySQL wire: USE statement switches the database on existing connections.
 		if _, err := r.conn.WriteDB().Exec("USE `" + dbname + "`"); err != nil {
 			fmt.Printf("ERROR: %v\n", err)
@@ -194,22 +201,35 @@ func (r *REPL) switchDatabase(dbname string) {
 }
 
 func (r *REPL) showDatabases() {
-	r.execute("SHOW DATABASES")
+	switch {
+	case r.cfg.IsPgCompatible():
+		r.execute(`SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname`)
+	case r.cfg.IsDamengNative():
+		r.execute(`SELECT USERNAME FROM DBA_USERS ORDER BY USERNAME`)
+	default:
+		r.execute("SHOW DATABASES")
+	}
 }
 
 func (r *REPL) showTables() {
-	if r.cfg.IsPgCompatible() {
+	switch {
+	case r.cfg.IsPgCompatible():
 		r.execute(`SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY schemaname, tablename`)
-	} else {
+	case r.cfg.IsDamengNative():
+		r.execute(`SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE OWNER = USER ORDER BY TABLE_NAME`)
+	default:
 		r.execute("SHOW TABLES")
 	}
 }
 
 func (r *REPL) showSchemas() {
-	if r.cfg.IsPgCompatible() {
+	switch {
+	case r.cfg.IsPgCompatible():
 		r.execute(`SELECT schema_name FROM information_schema.schemata ORDER BY schema_name`)
-	} else {
-		fmt.Println("\\dn is only available for PostgreSQL-wire databases (gaussdb, kingbase).")
+	case r.cfg.IsDamengNative():
+		r.execute(`SELECT USERNAME FROM DBA_USERS ORDER BY USERNAME`)
+	default:
+		fmt.Println("\\dn is only available for PostgreSQL-wire databases (gaussdb, kingbase) and Dameng.")
 	}
 }
 
@@ -255,9 +275,9 @@ func printHelp() {
 Meta-commands:
   \q, \quit          Exit
   \h, \help          Show this help
-  \d                 Show databases
-  \dt                Show tables in current database
-  \dn                Show schemas (PostgreSQL-wire only: gaussdb, kingbase)
+  \d                 Show databases (dameng: list users/schemas)
+  \dt                Show tables in current database (dameng: tables owned by current user)
+  \dn                Show schemas (PG wire: gaussdb, kingbase; dameng: same as \d)
   \c [DBNAME]        Switch to database DBNAME (show current if omitted)
   \timing            Toggle query timing
   \output FORMAT     Set output format: table | json | csv
