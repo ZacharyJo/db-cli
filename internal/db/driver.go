@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/ZacharyJo/mysql-cli-go/internal/config"
+	"github.com/ZacharyJo/db-cli/internal/config"
 )
 
 // Connector holds the master and slave connection pools.

@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/ZacharyJo/mysql-cli-go/internal/config"
+	"github.com/ZacharyJo/db-cli/internal/config"
 )
 
 func TestBuildMySQLDSN(t *testing.T) {
@@ -87,7 +87,7 @@ func TestEffectiveHost_HostPort(t *testing.T) {
 }
 
 func TestIsMySQLCompatible(t *testing.T) {
-	for _, dbType := range []string{"mysql", "oceanbase"} {
+	for _, dbType := range []string{"mysql", "oceanbase", "dameng"} {
 		cfg := &config.Config{DBType: dbType}
 		if !cfg.IsMySQLCompatible() {
 			t.Errorf("%s should be MySQL-compatible", dbType)

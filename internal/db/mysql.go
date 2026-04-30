@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 
 	"github.com/go-sql-driver/mysql"
-	cfg "github.com/ZacharyJo/mysql-cli-go/internal/config"
+	cfg "github.com/ZacharyJo/db-cli/internal/config"
 )
 
 // RegisterMySQLTLS registers a named TLS config with the MySQL driver.

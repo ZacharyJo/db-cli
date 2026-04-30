@@ -17,6 +17,7 @@ const (
 	DBOceanBase  = "oceanbase"
 	DBGaussDB    = "gaussdb"
 	DBKingbase   = "kingbase"
+	DBDameng     = "dameng"
 )
 
 // Config holds all connection parameters.
@@ -176,7 +177,7 @@ func (c *Config) EffectiveHost() string {
 
 // IsMySQLCompatible returns true for MySQL-wire databases.
 func (c *Config) IsMySQLCompatible() bool {
-	return c.DBType == DBMySQL || c.DBType == DBOceanBase
+	return c.DBType == DBMySQL || c.DBType == DBOceanBase || c.DBType == DBDameng
 }
 
 // IsPgCompatible returns true for PostgreSQL-wire databases.

@@ -5,22 +5,26 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/ZacharyJo/mysql-cli-go/internal/db"
-	"github.com/ZacharyJo/mysql-cli-go/internal/importer"
+	"github.com/ZacharyJo/db-cli/internal/db"
+	"github.com/ZacharyJo/db-cli/internal/importer"
 )
 
 var (
 	importBatchSize   int
 	importStopOnError bool
 	importVerbose     bool
+	importCreateDB    bool
+	importOnConflict  string
+	importIgnoreErrors bool
 )
 
 var importCmd = &cobra.Command{
 	Use:   "import <file.sql>",
 	Short: "Import and execute a SQL file",
 	Args:  cobra.ExactArgs(1),
-	Example: `  mysqlcli import --type mysql -H 127.0.0.1 -u root -p secret -d mydb ./dump.sql
-  mysqlcli import --type oceanbase -H 10.0.0.1 -u app -p secret -d mydb ./schema.sql --stop-on-error`,
+	Example: `  db-cli import --type mysql -H 127.0.0.1 -u root -p secret -d mydb ./dump.sql
+  db-cli import --type mysql -H 127.0.0.1 -u root -p secret -d newdb ./dump.sql --create-db
+  db-cli import --type oceanbase -H 10.0.0.1 -u app -p secret -d mydb ./schema.sql --stop-on-error`,
 	RunE: runImport,
 }
 
@@ -32,10 +36,27 @@ func init() {
 		"abort import on first error")
 	importCmd.Flags().BoolVarP(&importVerbose, "verbose", "v", false,
 		"print each statement before executing")
+	importCmd.Flags().BoolVar(&importCreateDB, "create-db", false,
+		"create the target database if it does not exist")
+	importCmd.Flags().StringVar(&importOnConflict, "on-conflict", "",
+		"conflict resolution for INSERT: ignore (rewrites INSERT to skip duplicate keys)")
+	importCmd.Flags().BoolVar(&importIgnoreErrors, "ignore-errors", false,
+		"skip all errors and continue importing (errors are still reported at the end)")
 }
 
 func runImport(_ *cobra.Command, args []string) error {
 	sqlFile := args[0]
+
+	if importCreateDB {
+		if rootCfg.Database == "" {
+			fmt.Fprintln(os.Stderr, "ERROR: --create-db requires -d <database>")
+			os.Exit(1)
+		}
+		if err := db.EnsureDatabase(rootCfg); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	conn, err := db.Connect(rootCfg)
 	if err != nil {
@@ -45,9 +66,12 @@ func runImport(_ *cobra.Command, args []string) error {
 	defer conn.Close()
 
 	opts := importer.Options{
-		BatchSize:   importBatchSize,
-		StopOnError: importStopOnError,
-		Verbose:     importVerbose,
+		BatchSize:    importBatchSize,
+		StopOnError:  importStopOnError,
+		Verbose:      importVerbose,
+		OnConflict:   importer.OnConflict(importOnConflict),
+		IgnoreErrors: importIgnoreErrors,
+		PgWire:       rootCfg.IsPgCompatible(),
 	}
 
 	count, errs := importer.Import(conn.WriteDB(), sqlFile, opts)

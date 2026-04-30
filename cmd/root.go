@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/ZacharyJo/mysql-cli-go/internal/config"
+	"github.com/ZacharyJo/db-cli/internal/config"
 )
 
 var (
@@ -16,13 +16,14 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "mysqlcli",
-	Short: "A cross-database CLI tool supporting MySQL, OceanBase, GaussDB, and KingbaseDB",
-	Long: `mysqlcli is a unified CLI for connecting to and querying multiple database types:
+	Use:   "db-cli",
+	Short: "A cross-database CLI tool supporting MySQL, OceanBase, GaussDB, KingbaseDB, and Dameng",
+	Long: `db-cli is a unified CLI for connecting to and querying multiple database types:
   - MySQL / MariaDB
   - OceanBase (MySQL-compatible)
   - GaussDB / openGauss (PostgreSQL-wire)
   - KingbaseDB (PostgreSQL-wire)
+  - Dameng DM8 (MySQL-compatible)
 
 It supports interactive REPL, one-shot SQL execution, SQL file import,
 read/write split for clusters, TLS/SSL, and cross-platform distribution.`,
@@ -39,11 +40,11 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// Config file flag.
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.mysqlcli.toml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.db-cli.toml)")
 
 	// Connection flags.
 	rootCmd.PersistentFlags().StringVarP(&rootCfg.DBType, "type", "t", "mysql",
-		"database type: mysql | oceanbase | gaussdb | kingbase")
+		"database type: mysql | oceanbase | gaussdb | kingbase | dameng")
 	rootCmd.PersistentFlags().StringVarP(&rootCfg.Host, "host", "H", "127.0.0.1", "host")
 	rootCmd.PersistentFlags().IntVarP(&rootCfg.Port, "port", "P", 3306, "port")
 	rootCmd.PersistentFlags().StringVarP(&rootCfg.User, "user", "u", "", "username")
@@ -67,8 +68,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&rootCfg.OutputFormat, "output", "o", "table",
 		"output format: table | json | csv")
 
-	// Bind env vars (MYSQLCLI_HOST, MYSQLCLI_USER, etc.)
-	viper.SetEnvPrefix("MYSQLCLI")
+	// Bind env vars (DB_CLI_HOST, DB_CLI_USER, etc.)
+	viper.SetEnvPrefix("DB_CLI")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 }
@@ -81,7 +82,7 @@ func initConfig() {
 		if err == nil {
 			viper.AddConfigPath(home)
 		}
-		viper.SetConfigName(".mysqlcli")
+		viper.SetConfigName(".db-cli")
 		viper.SetConfigType("toml")
 	}
 
@@ -102,5 +103,8 @@ func initConfig() {
 	// Default port by DB type if user did not change it.
 	if rootCfg.IsPgCompatible() && rootCfg.Port == 3306 {
 		rootCfg.Port = 5432
+	}
+	if rootCfg.DBType == config.DBDameng && rootCfg.Port == 3306 {
+		rootCfg.Port = 5236
 	}
 }

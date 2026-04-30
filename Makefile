@@ -1,5 +1,5 @@
-BINARY     := mysqlcli
-MODULE     := github.com/ZacharyJo/mysql-cli-go
+BINARY     := db-cli
+MODULE     := github.com/ZacharyJo/db-cli
 LDFLAGS    := -ldflags="-s -w"
 BUILD_DIR  := bin
 

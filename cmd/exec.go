@@ -6,16 +6,16 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/ZacharyJo/mysql-cli-go/internal/db"
-	"github.com/ZacharyJo/mysql-cli-go/internal/output"
+	"github.com/ZacharyJo/db-cli/internal/db"
+	"github.com/ZacharyJo/db-cli/internal/output"
 )
 
 var execCmd = &cobra.Command{
 	Use:   "exec <SQL>",
 	Short: "Execute a SQL statement and print results",
 	Args:  cobra.ExactArgs(1),
-	Example: `  mysqlcli exec --type mysql -H 127.0.0.1 -u root -p secret "SELECT version()"
-  mysqlcli exec --type gaussdb -H 10.0.0.1 -u admin -p secret "SELECT current_database()"`,
+	Example: `  db-cli exec --type mysql -H 127.0.0.1 -u root -p secret "SELECT version()"
+  db-cli exec --type gaussdb -H 10.0.0.1 -u admin -p secret "SELECT current_database()"`,
 	RunE: runExec,
 }
 

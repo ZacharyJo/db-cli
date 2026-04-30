@@ -8,13 +8,15 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/ZacharyJo/mysql-cli-go/internal/db"
-	"github.com/ZacharyJo/mysql-cli-go/internal/output"
+	"github.com/ZacharyJo/db-cli/internal/config"
+	"github.com/ZacharyJo/db-cli/internal/db"
+	"github.com/ZacharyJo/db-cli/internal/output"
 )
 
 // REPL holds state for an interactive SQL session.
 type REPL struct {
 	conn    *db.Connector
+	cfg     *config.Config
 	printer *output.Printer
 	timing  bool
 	dbType  string
@@ -23,19 +25,20 @@ type REPL struct {
 }
 
 // New creates a new REPL connected to the given Connector.
-func New(conn *db.Connector, dbType, host, dbName, format string) *REPL {
+func New(conn *db.Connector, cfg *config.Config, format string) *REPL {
 	return &REPL{
 		conn:    conn,
+		cfg:     cfg,
 		printer: output.New(format),
-		dbType:  dbType,
-		host:    host,
-		dbName:  dbName,
+		dbType:  cfg.DBType,
+		host:    cfg.EffectiveHost(),
+		dbName:  cfg.Database,
 	}
 }
 
 // Run starts the interactive readline loop. Returns when the user exits.
 func (r *REPL) Run() error {
-	histFile := os.ExpandEnv("$HOME/.mysqlcli_history")
+	histFile := os.ExpandEnv("$HOME/.db-cli_history")
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:            r.prompt(false),
 		HistoryFile:       histFile,
@@ -123,6 +126,16 @@ func (r *REPL) handleMeta(cmd string) (quit bool) {
 		}
 	case "\\d":
 		r.showDatabases()
+	case "\\dt":
+		r.showTables()
+	case "\\dn":
+		r.showSchemas()
+	case "\\c":
+		if len(parts) < 2 {
+			fmt.Printf("Current database: %s\n", r.dbName)
+			return false
+		}
+		r.switchDatabase(parts[1])
 	case "\\e":
 		r.openEditor()
 	default:
@@ -156,14 +169,48 @@ func (r *REPL) execute(sql string) {
 	}
 }
 
-func (r *REPL) showDatabases() {
-	var query string
-	if r.dbType == "gaussdb" || r.dbType == "kingbase" {
-		query = "SELECT datname FROM pg_database ORDER BY datname"
+func (r *REPL) switchDatabase(dbname string) {
+	if r.cfg.IsPgCompatible() {
+		// PG wire: must reconnect — connections are bound to a specific database.
+		newCfg := *r.cfg
+		newCfg.Database = dbname
+		newConn, err := db.Connect(&newCfg)
+		if err != nil {
+			fmt.Printf("ERROR: cannot connect to %q: %v\n", dbname, err)
+			return
+		}
+		r.conn.Close()
+		r.conn = newConn
+		r.cfg = &newCfg
 	} else {
-		query = "SHOW DATABASES"
+		// MySQL wire: USE statement switches the database on existing connections.
+		if _, err := r.conn.WriteDB().Exec("USE `" + dbname + "`"); err != nil {
+			fmt.Printf("ERROR: %v\n", err)
+			return
+		}
 	}
-	r.execute(query)
+	r.dbName = dbname
+	fmt.Printf("Database changed to %q\n", dbname)
+}
+
+func (r *REPL) showDatabases() {
+	r.execute("SHOW DATABASES")
+}
+
+func (r *REPL) showTables() {
+	if r.cfg.IsPgCompatible() {
+		r.execute(`SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY schemaname, tablename`)
+	} else {
+		r.execute("SHOW TABLES")
+	}
+}
+
+func (r *REPL) showSchemas() {
+	if r.cfg.IsPgCompatible() {
+		r.execute(`SELECT schema_name FROM information_schema.schemata ORDER BY schema_name`)
+	} else {
+		fmt.Println("\\dn is only available for PostgreSQL-wire databases (gaussdb, kingbase).")
+	}
 }
 
 func (r *REPL) openEditor() {
@@ -171,7 +218,7 @@ func (r *REPL) openEditor() {
 	if editor == "" {
 		editor = "vi"
 	}
-	tmpf, err := os.CreateTemp("", "mysqlcli-*.sql")
+	tmpf, err := os.CreateTemp("", "db-cli-*.sql")
 	if err != nil {
 		fmt.Println("ERROR: cannot create temp file:", err)
 		return
@@ -209,6 +256,9 @@ Meta-commands:
   \q, \quit          Exit
   \h, \help          Show this help
   \d                 Show databases
+  \dt                Show tables in current database
+  \dn                Show schemas (PostgreSQL-wire only: gaussdb, kingbase)
+  \c [DBNAME]        Switch to database DBNAME (show current if omitted)
   \timing            Toggle query timing
   \output FORMAT     Set output format: table | json | csv
   \e                 Open $EDITOR to compose SQL

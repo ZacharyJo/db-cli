@@ -5,15 +5,10 @@ import (
 	"testing"
 )
 
-// mockDB implements a minimal sql.DB-like interface for testing.
-// We test the parser (execStatements) by capturing what would be executed.
+// ---------------------------------------------------------------------------
+// SQL 分割器测试（已有，保留）
+// ---------------------------------------------------------------------------
 
-type captureDB struct {
-	stmts []string
-	err   error
-}
-
-// We test the internal SQL splitter via a helper that returns statements without executing.
 func splitStatements(input string) []string {
 	var stmts []string
 	var stmt strings.Builder
@@ -154,5 +149,125 @@ func TestSplitEscapedQuote(t *testing.T) {
 	stmts := splitStatements(input)
 	if len(stmts) != 1 {
 		t.Fatalf("expected 1 statement, got %d: %v", len(stmts), stmts)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// rewriteInsert 测试
+// ---------------------------------------------------------------------------
+
+func TestRewriteInsert_MySQL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`INSERT INTO "t" ("id") VALUES (1)`,
+			`INSERT IGNORE INTO "t" ("id") VALUES (1)`,
+		},
+		{
+			`insert into t (id) values (2)`,
+			`INSERT IGNORE INTO t (id) values (2)`,
+		},
+		{
+			// 已有 IGNORE，不应重复
+			`INSERT IGNORE INTO t (id) VALUES (3)`,
+			`INSERT IGNORE INTO t (id) VALUES (3)`,
+		},
+		{
+			// 非 INSERT，不改写
+			`UPDATE t SET a=1`,
+			`UPDATE t SET a=1`,
+		},
+		{
+			`CREATE TABLE t (id INT)`,
+			`CREATE TABLE t (id INT)`,
+		},
+	}
+	for _, c := range cases {
+		got := rewriteInsert(c.in, false)
+		if got != c.want {
+			t.Errorf("rewriteInsert(%q, mysql)\n  want: %q\n  got:  %q", c.in, c.want, got)
+		}
+	}
+}
+
+func TestRewriteInsert_PG(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{
+			`INSERT INTO "t" ("id") VALUES (1)`,
+			`INSERT INTO "t" ("id") VALUES (1) ON CONFLICT DO NOTHING`,
+		},
+		{
+			// 末尾有分号，分号应被去掉再追加
+			`INSERT INTO "t" ("id") VALUES (1);`,
+			`INSERT INTO "t" ("id") VALUES (1) ON CONFLICT DO NOTHING`,
+		},
+		{
+			// 非 INSERT，不改写
+			`UPDATE t SET a=1`,
+			`UPDATE t SET a=1`,
+		},
+	}
+	for _, c := range cases {
+		got := rewriteInsert(c.in, true)
+		if got != c.want {
+			t.Errorf("rewriteInsert(%q, pg)\n  want: %q\n  got:  %q", c.in, c.want, got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// rewriteCreate 测试
+// ---------------------------------------------------------------------------
+
+func TestRewriteCreate_Table(t *testing.T) {
+	in := `CREATE TABLE "t_foo" (id INT)`
+	upper := strings.ToUpper(strings.TrimSpace(in))
+	got := rewriteCreate(in, upper)
+	want := `CREATE TABLE IF NOT EXISTS "t_foo" (id INT)`
+	if got != want {
+		t.Errorf("rewriteCreate table\n  want: %q\n  got:  %q", want, got)
+	}
+}
+
+func TestRewriteCreate_TableAlreadyIfNotExists(t *testing.T) {
+	in := `CREATE TABLE IF NOT EXISTS t (id INT)`
+	upper := strings.ToUpper(strings.TrimSpace(in))
+	got := rewriteCreate(in, upper)
+	if got != in {
+		t.Errorf("should be unchanged, got: %q", got)
+	}
+}
+
+func TestRewriteCreate_Index(t *testing.T) {
+	in := `CREATE INDEX idx_foo ON t (col)`
+	upper := strings.ToUpper(strings.TrimSpace(in))
+	got := rewriteCreate(in, upper)
+	want := `CREATE INDEX IF NOT EXISTS idx_foo ON t (col)`
+	if got != want {
+		t.Errorf("rewriteCreate index\n  want: %q\n  got:  %q", want, got)
+	}
+}
+
+func TestRewriteCreate_UniqueIndex(t *testing.T) {
+	in := `CREATE UNIQUE INDEX uq_foo ON t (col)`
+	upper := strings.ToUpper(strings.TrimSpace(in))
+	got := rewriteCreate(in, upper)
+	want := `CREATE UNIQUE INDEX IF NOT EXISTS uq_foo ON t (col)`
+	if got != want {
+		t.Errorf("rewriteCreate unique index\n  want: %q\n  got:  %q", want, got)
+	}
+}
+
+func TestRewriteCreate_NonCreate(t *testing.T) {
+	in := `ALTER TABLE t ADD COLUMN x INT`
+	upper := strings.ToUpper(strings.TrimSpace(in))
+	got := rewriteCreate(in, upper)
+	if got != in {
+		t.Errorf("non-create should be unchanged, got: %q", got)
 	}
 }

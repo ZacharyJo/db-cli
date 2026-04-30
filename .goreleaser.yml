@@ -5,8 +5,8 @@ before:
     - go mod tidy
 
 builds:
-  - id: mysqlcli
-    binary: mysqlcli
+  - id: db-cli
+    binary: db-cli
     main: .
     ldflags:
       - -s -w
@@ -24,13 +24,16 @@ builds:
         goarch: arm64
 
 archives:
-  - id: mysqlcli
-    name_template: "mysqlcli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: db-cli
+    name_template: "db-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]
     files:
       - README.md
+      - README_CN.md
+      - CHANGELOG.md
+      - LICENSE
 
 checksum:
   name_template: "checksums.txt"
