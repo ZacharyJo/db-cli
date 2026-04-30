@@ -1,0 +1,23 @@
+# Build output
+bin/
+dist/
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env / secrets
+.env
+*.pem
