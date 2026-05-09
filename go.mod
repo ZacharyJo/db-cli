@@ -3,6 +3,8 @@ module github.com/ZacharyJo/db-cli
 go 1.26.1
 
 require (
+	gitee.com/chunanyong/dm v1.8.22
+	gitee.com/opengauss/openGauss-connector-go-pq v1.0.7
 	github.com/chzyer/readline v1.5.1
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.9.2
@@ -16,8 +18,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	gitee.com/chunanyong/dm v1.8.22 // indirect
-	gitee.com/opengauss/openGauss-connector-go-pq v1.0.7 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
