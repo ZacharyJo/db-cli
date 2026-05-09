@@ -1,9 +1,9 @@
 package db
 
-// gaussdb.go registers the pgx stdlib driver.
-// GaussDB (openGauss) uses the PostgreSQL wire protocol, so pgx works directly.
-// The driver is imported via its side-effect registration in pgx.go.
+// gaussdb.go registers the openGauss driver.
+// openGauss uses a custom SHA256 auth mechanism incompatible with pgx;
+// the official connector handles it natively.
 
 import (
-	_ "github.com/jackc/pgx/v5/stdlib" // registers "pgx" driver name
+	_ "gitee.com/opengauss/openGauss-connector-go-pq" // registers "opengauss" driver name
 )

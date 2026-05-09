@@ -29,6 +29,7 @@ type Options struct {
 	OnConflict   OnConflict // conflict resolution strategy for INSERT
 	IgnoreErrors bool       // skip all errors and continue (errors still reported at end)
 	PgWire       bool       // true when target is PostgreSQL-wire (affects INSERT rewrite syntax)
+	MysqlCompat  bool       // true when target DB is in MySQL-compat mode (e.g. GaussDB DBCOMPATIBILITY='M'); skips all SQL rewriting and passes raw MySQL syntax to the server
 	CreateDB     bool       // auto-create databases encountered in USE statements
 	Cfg          *config.Config // used to reconnect on USE dbname
 	OpenDB       func(cfg *config.Config) (*sql.DB, error) // injected by caller
@@ -85,11 +86,11 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 // When a USE dbname statement is found, it reconnects to the new database.
 func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 	var (
-		errs      []error
-		count     int
-		delimiter = ";"
-		currentDB = db // current pool; may be replaced on USE
-		fatalErr  bool // set by flushStmt when a non-ignorable error occurs
+		errs         []error
+		count        int
+		delimiter    = ";"
+		currentDB    = db // current pool; may be replaced on USE
+		fatalErr     bool // set by flushStmt when a non-ignorable error occurs
 	)
 
 	ctx := context.Background()
@@ -148,9 +149,10 @@ func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MiB line buffer
 
 	var stmt strings.Builder
-	inSingleQuote := false
-	inDoubleQuote := false
-	inLineComment := false
+	inSingleQuote  := false
+	inDoubleQuote  := false
+	inBacktick     := false // MySQL identifier quoting (`name`); only tracked in MysqlCompat mode
+	inLineComment  := false
 	inBlockComment := false
 
 	flushStmt := func() {
@@ -188,13 +190,17 @@ func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 			}
 			return
 		}
-		// Rewrite CREATE TABLE / CREATE INDEX to IF NOT EXISTS when ignoring conflicts.
-		if opts.OnConflict == OnConflictIgnore {
-			s = rewriteCreate(s, upper)
-		}
-		// Rewrite INSERT for conflict handling.
-		if opts.OnConflict == OnConflictIgnore {
-			s = rewriteInsert(s, opts.PgWire)
+		// In MySQL-compat mode the server understands raw MySQL syntax natively
+		// (e.g. GaussDB DBCOMPATIBILITY='M'). Skip all client-side rewrites.
+		if !opts.MysqlCompat {
+			// Rewrite CREATE TABLE / CREATE INDEX to IF NOT EXISTS when ignoring conflicts.
+			if opts.OnConflict == OnConflictIgnore {
+				s = rewriteCreate(s, upper)
+			}
+			// Rewrite INSERT for conflict handling.
+			if opts.OnConflict == OnConflictIgnore {
+				s = rewriteInsert(s, opts.PgWire)
+			}
 		}
 		if opts.Verbose {
 			fmt.Printf("SQL> %s\n", s)
@@ -272,6 +278,15 @@ func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 				continue
 			}
 
+			// Backtick identifier quoting (MySQL syntax, only active in MysqlCompat mode).
+			if inBacktick {
+				stmt.WriteByte(ch)
+				if ch == '`' {
+					inBacktick = false
+				}
+				continue
+			}
+
 			// Detect comment start.
 			if ch == '-' && i+1 < len(line) && line[i+1] == '-' {
 				inLineComment = true
@@ -290,6 +305,11 @@ func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 			}
 			if ch == '"' {
 				inDoubleQuote = true
+				stmt.WriteByte(ch)
+				continue
+			}
+			if opts.MysqlCompat && ch == '`' {
+				inBacktick = true
 				stmt.WriteByte(ch)
 				continue
 			}

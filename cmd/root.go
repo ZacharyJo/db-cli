@@ -17,13 +17,15 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "db-cli",
-	Short: "A cross-database CLI tool supporting MySQL, OceanBase, GaussDB, KingbaseDB, and Dameng",
+	Short: "A cross-database CLI tool supporting MySQL, OceanBase, GaussDB, KingbaseDB, Dameng, Redis, and MongoDB",
 	Long: `db-cli is a unified CLI for connecting to and querying multiple database types:
   - MySQL / MariaDB
   - OceanBase (MySQL-compatible)
   - GaussDB / openGauss (PostgreSQL-wire)
   - KingbaseDB (PostgreSQL-wire)
-  - Dameng DM8 (MySQL-compatible)
+  - Dameng DM8 (native DM protocol)
+  - Redis (single / sentinel / cluster)
+  - MongoDB
 
 It supports interactive REPL, one-shot SQL execution, SQL file import,
 read/write split for clusters, TLS/SSL, and cross-platform distribution.`,
@@ -101,8 +103,11 @@ func initConfig() {
 	}
 
 	// Default port by DB type if user did not change it.
-	if rootCfg.IsPgCompatible() && rootCfg.Port == 3306 {
-		rootCfg.Port = 5432
+	if rootCfg.DBType == config.DBKingbase && rootCfg.Port == 3306 {
+		rootCfg.Port = 54321
+	}
+	if rootCfg.DBType == config.DBGaussDB && rootCfg.Port == 3306 {
+		rootCfg.Port = 8000
 	}
 	if rootCfg.DBType == config.DBDameng && rootCfg.Port == 3306 {
 		rootCfg.Port = 5236

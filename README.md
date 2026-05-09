@@ -11,8 +11,8 @@ A unified command-line tool for connecting to and querying multiple databases �
 | MySQL / MariaDB | MySQL wire | `connect` / `exec` / `import` |
 | OceanBase | MySQL wire | `connect` / `exec` / `import` |
 | Dameng (DM8) | DM wire (`-t dameng`) | `connect` / `exec` / `import` |
-| GaussDB / openGauss | PostgreSQL wire | `connect` / `exec` / `import` |
-| KingbaseDB | PostgreSQL wire | `connect` / `exec` / `import` |
+| GaussDB / openGauss | openGauss native (`-t gaussdb`) | `connect` / `exec` / `import` |
+| KingbaseDB | PostgreSQL wire (`-t kingbase`) | `connect` / `exec` / `import` |
 | Redis | Redis protocol | `redis` / `redis exec` |
 | MongoDB | MongoDB protocol | `mongo` / `mongo exec` |
 
@@ -28,7 +28,7 @@ go install github.com/ZacharyJo/db-cli@latest
 
 ```bash
 git clone https://github.com/ZacharyJo/db-cli
-cd mysql-cli-go
+cd db-cli
 make build          # outputs bin/db-cli
 ```
 
@@ -43,10 +43,10 @@ make build-all      # linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, wind
 ### SQL Databases — Interactive REPL (`connect`)
 
 ```bash
-db-cli connect --type mysql    -H 127.0.0.1 -P 3306 -u root -p secret -d mydb
-db-cli connect --type dameng   -H 127.0.0.1         -u SYSDBA -p secret -d SYSDBA
-db-cli connect --type gaussdb  -H 10.0.0.1  -P 5432 -u admin -p secret -d mydb
-db-cli connect --type kingbase -H 10.0.0.1  -P 5432 -u system -p secret -d mydb
+db-cli connect --type mysql    -H 127.0.0.1 -P 3306  -u root   -p secret -d mydb
+db-cli connect --type dameng   -H 127.0.0.1          -u SYSDBA -p secret -d SYSDBA
+db-cli connect --type gaussdb  -H 10.0.0.1           -u root   -p secret -d postgres
+db-cli connect --type kingbase -H 10.0.0.1           -u system -p secret -d mydb
 db-cli connect --profile prod-cluster
 ```
 
@@ -70,17 +70,20 @@ Type SQL and terminate with `;` to execute. Multi-line input is supported.
 ### SQL Databases — One-shot Execution (`exec`)
 
 ```bash
-db-cli exec --type mysql   -H 127.0.0.1 -u root  -p secret "SELECT version()"
-db-cli exec --type dameng  -H 127.0.0.1 -P 5236 -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
-db-cli exec --type gaussdb -H 10.0.0.1  -u admin -p secret "SELECT current_database()"
+db-cli exec --type mysql    -H 127.0.0.1 -u root  -p secret "SELECT version()"
+db-cli exec --type dameng   -H 127.0.0.1 -P 5236  -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
+db-cli exec --type gaussdb  -H 10.0.0.1           -u root   -p secret "SELECT current_database()"
+db-cli exec --type kingbase -H 10.0.0.1           -u system -p secret "SELECT version()"
 ```
 
 ### SQL File Import (`import`)
 
 ```bash
-db-cli import --type mysql     -H 127.0.0.1 -u root  -p secret -d mydb ./dump.sql
-db-cli import --type dameng    -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA ./schema.sql
-db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema.sql --stop-on-error
+db-cli import --type mysql     -H 127.0.0.1 -u root  -p secret -d mydb    ./dump.sql
+db-cli import --type dameng    -H 127.0.0.1 -P 5236  -u SYSDBA -p secret -d SYSDBA   ./schema.sql
+db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb    ./schema.sql --stop-on-error
+db-cli import --type gaussdb   -H 10.0.0.1  -u root  -p secret -d mydb    ./dump.sql --gaussdb-compat M --create-db --ignore-errors
+db-cli import --type kingbase  -H 10.0.0.1  -u system -p secret -d mydb   ./dump.sql --create-db
 ```
 
 **Import flags:**
@@ -88,8 +91,12 @@ db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--batch-size N` | 0 | Commit every N statements (0 = no batching) |
+| `--on-conflict` | — | `ignore`: rewrite `INSERT` → `INSERT IGNORE` (MySQL) or append `ON CONFLICT DO NOTHING` (PG); also adds `IF NOT EXISTS` to `CREATE TABLE/INDEX` |
+| `--ignore-errors` | false | Continue past errors; print all errors at end |
+| `--create-db` | false | Create target database if it does not exist |
 | `--stop-on-error` | false | Abort on first error |
 | `--verbose` / `-v` | false | Print each statement before executing |
+| `--gaussdb-compat M` | — | GaussDB/openGauss only: create the database with `DBCOMPATIBILITY='M'` (MySQL-compat mode) and pass raw MySQL syntax through without any client-side rewriting. Backticks, `ENGINE=InnoDB`, `AUTO_INCREMENT`, `INSERT IGNORE`, etc. are sent as-is to the server. Use with `--create-db` to auto-create the M-mode database in one step. |
 
 The importer streams the file line-by-line (no full load into memory) and correctly handles quoted strings, `--` and `/* */` comments, and MySQL's `DELIMITER` directive for stored procedures.
 
@@ -177,7 +184,7 @@ db-cli mongo exec -H 127.0.0.1 -d mydb '{"dbStats":1}'
 |------|---------|-------------|
 | `-t`, `--type` | `mysql` | DB type: `mysql` \| `oceanbase` \| `dameng` \| `gaussdb` \| `kingbase` |
 | `-H`, `--host` | `127.0.0.1` | Host |
-| `-P`, `--port` | `3306` | Port (auto-switches to `5432` for PG-wire types, `5236` for Dameng) |
+| `-P`, `--port` | `3306` | Port (auto-switches to `8000` for gaussdb, `54321` for kingbase, `5236` for Dameng) |
 | `-u`, `--user` | | Username |
 | `-p`, `--password` | | Password |
 | `-d`, `--database` | | Database name |
@@ -238,7 +245,7 @@ database = "SYSDBA"
 [gaussdb-dev]
 type     = "gaussdb"
 host     = "127.0.0.1"
-port     = 5432
+port     = 8000
 user     = "dev"
 password = "dev"
 database = "devdb"
@@ -285,6 +292,102 @@ SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE OWNER = USER ORDER BY TABLE_NAME;
 -- Table structure
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
 FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = 'YOUR_TABLE' AND OWNER = USER;
+```
+
+## GaussDB / openGauss Notes
+
+GaussDB uses a private SHA256 authentication mechanism that is incompatible with the standard pgx driver. db-cli uses the official [openGauss-connector-go-pq](https://gitee.com/opengauss/openGauss-connector-go-pq) driver, which handles SHA256, MD5SHA256, and SM3 authentication natively — covering both openGauss community edition and Huawei Cloud GaussDB.
+
+Default port: `8000` (auto-set when `-P` is not specified). Override with `-P`.
+
+```bash
+db-cli connect -t gaussdb -H 10.0.0.1 -P 8000 -u root -p secret -d postgres
+db-cli connect --profile gaussdb-prod
+```
+
+### Database compatibility modes
+
+GaussDB supports two compatibility modes set at database creation time:
+
+| Mode | `DBCOMPATIBILITY` | SQL dialect | Use with |
+|------|-------------------|-------------|----------|
+| M mode | `'M'` | MySQL syntax (backticks, `ENGINE=InnoDB`, `AUTO_INCREMENT`, `INSERT IGNORE`, `tinyint`, etc.) | `--gaussdb-compat M` |
+| A mode | `'A'` (default) | Standard SQL / Oracle style; empty string `''` is treated as `NULL` | standard import |
+
+**Import a MySQL dump into GaussDB (M mode — recommended):**
+
+```bash
+# Auto-creates the database in M mode and imports raw MySQL SQL without any rewriting
+db-cli import -t gaussdb -H 10.0.0.1 -u root -p secret -d mydb \
+  --gaussdb-compat M --create-db --ignore-errors ./dump.sql
+```
+
+**Import a PostgreSQL-style SQL file into GaussDB (A mode):**
+
+The file must be pre-converted: replace `DATETIME` → `timestamp`, remove `ON UPDATE CURRENT_TIMESTAMP`, `tinyint` → `smallint`, `longtext` → `text`, `unsigned`, `IF NOT EXISTS` on `CREATE SCHEMA`, and `NOT NULL` on columns that may contain empty strings.
+
+```bash
+db-cli import -t gaussdb -H 10.0.0.1 -u root -p secret -d mydb \
+  --create-db --ignore-errors ./dump_a_mode.sql
+```
+
+### Meta-command behavior
+
+| Command | Behavior |
+|---------|----------|
+| `\d` | List databases (`SELECT datname FROM pg_database`) |
+| `\dt` | List tables in current schema (`pg_tables WHERE schemaname = 'public'`) |
+| `\dn` | List schemas (`SELECT nspname FROM pg_namespace`) |
+| `\c NAME` | Reconnect to the named database |
+
+### Useful system queries
+
+```sql
+-- Version
+SELECT version();
+
+-- Current database
+SELECT current_database();
+
+-- List schemas
+SELECT nspname FROM pg_namespace ORDER BY nspname;
+
+-- Table structure
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'your_table' AND table_schema = 'public';
+```
+
+## KingbaseDB Notes
+
+KingbaseDB (ES series) uses the PostgreSQL wire protocol and is compatible with pgx.
+
+Default port: `54321` (auto-set when `-P` is not specified). Override with `-P`.
+
+```bash
+db-cli connect -t kingbase -H 10.0.0.1 -P 54321 -u system -p secret -d mydb
+db-cli connect --profile kingbase-prod
+```
+
+### Meta-command behavior
+
+| Command | Behavior |
+|---------|----------|
+| `\d` | List databases |
+| `\dt` | List tables in current schema |
+| `\dn` | List schemas |
+| `\c NAME` | Reconnect to the named database |
+
+### Config file example
+
+```toml
+[kingbase-prod]
+type     = "kingbase"
+host     = "10.61.120.31"
+port     = 8342
+user     = "system"
+password = "secret"
+database = "mydb"
 ```
 
 ## Environment Variables

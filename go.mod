@@ -17,6 +17,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	gitee.com/chunanyong/dm v1.8.22 // indirect
+	gitee.com/opengauss/openGauss-connector-go-pq v1.0.7 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -37,6 +38,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.2.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
@@ -48,4 +50,5 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )

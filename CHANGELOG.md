@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-05-09
+
+### Added
+- **GaussDB MySQL-compat mode**: `--gaussdb-compat M` flag for `import` command — creates the target database with `DBCOMPATIBILITY='M'` and passes raw MySQL SQL through without any client-side rewriting (backticks, `ENGINE=InnoDB`, `AUTO_INCREMENT`, `INSERT IGNORE`, etc. sent as-is). Use with `--create-db` to auto-create an M-mode database in one step.
+- **openGauss native driver**: replaced pgx with the official `openGauss-connector-go-pq` driver for GaussDB connections, supporting SHA256, MD5SHA256, and SM3 authentication natively.
+- **Single-arch cross-compilation**: `make build-target GOOS=... GOARCH=...` for targeted cross-compilation without building all platforms.
+
+---
+
 ## [2.1.0] - 2026-04-30
 
 ### Added
@@ -63,7 +72,6 @@ All notable changes to this project will be documented in this file.
 - `import --on-conflict=ignore`: `INSERT ... ON CONFLICT DO NOTHING` rewrite is now idempotent
 
 ### Changed
-- History file renamed from `~/.db-cli_history` to `~/.db-cli_history` (SQL REPL)
 - `\d` now consistently uses `SHOW DATABASES` for all MySQL-wire databases
 
 ---

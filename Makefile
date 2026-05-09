@@ -10,10 +10,14 @@ PLATFORMS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: build build-all test clean fmt vet
+.PHONY: build build-all build-target test clean fmt vet
 
 build:
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) .
+
+build-target:
+	@mkdir -p $(BUILD_DIR)
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) .
 
 build-all:
 	@mkdir -p $(BUILD_DIR)

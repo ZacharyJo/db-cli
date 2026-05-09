@@ -43,7 +43,7 @@ func ensurePgWithProbe(cfg *config.Config) error {
 			continue
 		}
 		defer db.Close()
-		return ensurePg(db, cfg.Database)
+		return ensurePg(db, cfg.Database, cfg.GaussDBCompatMode)
 	}
 	return fmt.Errorf("bootstrap connect: none of %v reachable: %w", pgBootstrapCandidates, lastErr)
 }
@@ -57,7 +57,7 @@ func ensureMysql(db *sql.DB, dbname string) error {
 	return nil
 }
 
-func ensurePg(db *sql.DB, dbname string) error {
+func ensurePg(db *sql.DB, dbname string, compatMode string) error {
 	var exists bool
 	err := db.QueryRow(
 		"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", dbname,
@@ -69,8 +69,11 @@ func ensurePg(db *sql.DB, dbname string) error {
 		fmt.Printf("Database %q already exists.\n", dbname)
 		return nil
 	}
-	// CREATE DATABASE cannot run inside a transaction; pgx uses autocommit by default.
-	if _, err := db.Exec(`CREATE DATABASE "` + dbname + `"`); err != nil {
+	stmt := `CREATE DATABASE "` + dbname + `"`
+	if compatMode != "" {
+		stmt += ` DBCOMPATIBILITY '` + compatMode + `'`
+	}
+	if _, err := db.Exec(stmt); err != nil {
 		return fmt.Errorf("create database %q: %w", dbname, err)
 	}
 	fmt.Printf("Database %q created.\n", dbname)

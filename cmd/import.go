@@ -12,12 +12,13 @@ import (
 )
 
 var (
-	importBatchSize   int
-	importStopOnError bool
-	importVerbose     bool
-	importCreateDB    bool
-	importOnConflict  string
+	importBatchSize    int
+	importStopOnError  bool
+	importVerbose      bool
+	importCreateDB     bool
+	importOnConflict   string
 	importIgnoreErrors bool
+	importGaussCompat  string
 )
 
 var importCmd = &cobra.Command{
@@ -26,7 +27,8 @@ var importCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Example: `  db-cli import --type mysql -H 127.0.0.1 -u root -p secret -d mydb ./dump.sql
   db-cli import --type mysql -H 127.0.0.1 -u root -p secret -d newdb ./dump.sql --create-db
-  db-cli import --type oceanbase -H 10.0.0.1 -u app -p secret -d mydb ./schema.sql --stop-on-error`,
+  db-cli import --type oceanbase -H 10.0.0.1 -u app -p secret -d mydb ./schema.sql --stop-on-error
+  db-cli import --type gaussdb -H 10.0.0.1 -u root -p secret -d mydb ./dump.sql --gaussdb-compat M --create-db --ignore-errors`,
 	RunE: runImport,
 }
 
@@ -44,10 +46,17 @@ func init() {
 		"conflict resolution for INSERT: ignore (rewrites INSERT to skip duplicate keys)")
 	importCmd.Flags().BoolVar(&importIgnoreErrors, "ignore-errors", false,
 		"skip all errors and continue importing (errors are still reported at the end)")
+	importCmd.Flags().StringVar(&importGaussCompat, "gaussdb-compat", "",
+		"DBCOMPATIBILITY mode for GaussDB: 'M' enables MySQL-compat parsing and skips SQL rewriting; used with --create-db to create the database in that mode")
 }
 
 func runImport(_ *cobra.Command, args []string) error {
 	sqlFile := args[0]
+
+	// Propagate --gaussdb-compat into the config so EnsureDatabase picks it up.
+	if importGaussCompat != "" {
+		rootCfg.GaussDBCompatMode = importGaussCompat
+	}
 
 	if importCreateDB {
 		if rootCfg.Database == "" {
@@ -67,15 +76,25 @@ func runImport(_ *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
+	onConflict := importer.OnConflict(importOnConflict)
+	// GaussDB MySQL-compat mode supports neither INSERT IGNORE nor ON CONFLICT DO NOTHING.
+	// Suppress INSERT rewriting; --ignore-errors handles duplicate-key failures.
+	if rootCfg.DBType == config.DBGaussDB {
+		onConflict = importer.OnConflictDefault
+	}
+
 	opts := importer.Options{
 		BatchSize:    importBatchSize,
 		StopOnError:  importStopOnError,
 		Verbose:      importVerbose,
-		OnConflict:   importer.OnConflict(importOnConflict),
+		OnConflict:   onConflict,
 		IgnoreErrors: importIgnoreErrors,
-		PgWire:       rootCfg.IsPgCompatible(),
-		CreateDB:     importCreateDB,
-		Cfg:          rootCfg,
+		// When GaussDB is in MySQL-compat mode, pass raw MySQL syntax through without rewriting.
+		MysqlCompat: rootCfg.DBType == config.DBGaussDB && importGaussCompat == "M",
+		// KingbaseDB (standard PG wire) uses ON CONFLICT DO NOTHING.
+		PgWire:   rootCfg.DBType == config.DBKingbase,
+		CreateDB: importCreateDB,
+		Cfg:      rootCfg,
 		OpenDB: func(cfg *config.Config) (*sql.DB, error) {
 			return db.OpenSingleDB(cfg)
 		},

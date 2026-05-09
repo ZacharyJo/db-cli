@@ -34,9 +34,10 @@ type Config struct {
 	SSLCA          string // path to CA cert PEM
 	SSLCert        string // path to client cert PEM
 	SSLKey         string // path to client key PEM
-	ConnectTimeout int    // seconds
-	Profile        string
-	OutputFormat   string // table | json | csv
+	ConnectTimeout    int    // seconds
+	Profile           string
+	OutputFormat      string // table | json | csv
+	GaussDBCompatMode string // DBCOMPATIBILITY value when creating a GaussDB database (e.g. "M")
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -116,6 +117,14 @@ func BuildMySQLDSN(cfg *Config, host string) string {
 	return dsn
 }
 
+// pgxQuote wraps a libpq connection-string value in single quotes, escaping
+// any embedded single-quotes and backslashes as required by the spec.
+func pgxQuote(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	return "'" + s + "'"
+}
+
 // BuildPgxDSN constructs a pgx (PostgreSQL-wire) DSN string for GaussDB/KingbaseDB.
 func BuildPgxDSN(cfg *Config, host, port string) string {
 	sslMode := cfg.SSLMode
@@ -123,7 +132,7 @@ func BuildPgxDSN(cfg *Config, host, port string) string {
 		sslMode = "disable"
 	}
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
-		host, port, cfg.User, cfg.Password, cfg.Database, sslMode, cfg.ConnectTimeout)
+		host, port, cfg.User, pgxQuote(cfg.Password), cfg.Database, sslMode, cfg.ConnectTimeout)
 	if cfg.SSLCA != "" {
 		dsn += " sslrootcert=" + cfg.SSLCA
 	}

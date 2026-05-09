@@ -72,6 +72,11 @@ func openDB(cfg *config.Config, addr string) (*sql.DB, error) {
 		}
 		dsn = config.BuildMySQLDSN(cfg, addr)
 
+	case cfg.DBType == config.DBGaussDB:
+		driverName = "opengauss"
+		host, port := splitHostPort(addr, defaultPgPort(cfg))
+		dsn = config.BuildPgxDSN(cfg, host, port)
+
 	case cfg.IsPgCompatible():
 		driverName = "pgx"
 		host, port := splitHostPort(addr, defaultPgPort(cfg))

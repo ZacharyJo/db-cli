@@ -11,8 +11,8 @@
 | MySQL / MariaDB | MySQL wire | `connect` / `exec` / `import` |
 | OceanBase | MySQL wire | `connect` / `exec` / `import` |
 | 达梦（DM8） | DM wire（`-t dameng`） | `connect` / `exec` / `import` |
-| GaussDB / openGauss | PostgreSQL wire | `connect` / `exec` / `import` |
-| KingbaseDB | PostgreSQL wire | `connect` / `exec` / `import` |
+| GaussDB / openGauss | openGauss 原生（`-t gaussdb`） | `connect` / `exec` / `import` |
+| KingbaseDB | PostgreSQL wire（`-t kingbase`） | `connect` / `exec` / `import` |
 | Redis | Redis 协议 | `redis` / `redis exec` |
 | MongoDB | MongoDB 协议 | `mongo` / `mongo exec` |
 
@@ -28,7 +28,7 @@ go install github.com/ZacharyJo/db-cli@latest
 
 ```bash
 git clone https://github.com/ZacharyJo/db-cli
-cd mysql-cli-go
+cd db-cli
 make build          # 输出至 bin/db-cli
 ```
 
@@ -43,10 +43,10 @@ make build-all      # linux/amd64、linux/arm64、darwin/amd64、darwin/arm64、
 ### SQL 数据库 — 交互式 REPL（`connect`）
 
 ```bash
-db-cli connect --type mysql    -H 127.0.0.1 -P 3306 -u root   -p secret -d mydb
-db-cli connect --type dameng   -H 127.0.0.1         -u SYSDBA  -p secret -d SYSDBA
-db-cli connect --type gaussdb  -H 10.0.0.1  -P 5432 -u admin  -p secret -d mydb
-db-cli connect --type kingbase -H 10.0.0.1  -P 5432 -u system -p secret -d mydb
+db-cli connect --type mysql    -H 127.0.0.1 -P 3306  -u root   -p secret -d mydb
+db-cli connect --type dameng   -H 127.0.0.1          -u SYSDBA  -p secret -d SYSDBA
+db-cli connect --type gaussdb  -H 10.0.0.1           -u root   -p secret -d postgres
+db-cli connect --type kingbase -H 10.0.0.1           -u system -p secret -d mydb
 db-cli connect --profile prod-cluster
 ```
 
@@ -70,17 +70,20 @@ db-cli connect --profile prod-cluster
 ### SQL 数据库 — 一次性执行（`exec`）
 
 ```bash
-db-cli exec --type mysql   -H 127.0.0.1 -u root  -p secret "SELECT version()"
-db-cli exec --type dameng  -H 127.0.0.1 -P 5236 -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
-db-cli exec --type gaussdb -H 10.0.0.1  -u admin -p secret "SELECT current_database()"
+db-cli exec --type mysql    -H 127.0.0.1 -u root  -p secret "SELECT version()"
+db-cli exec --type dameng   -H 127.0.0.1 -P 5236  -u SYSDBA -p secret "SELECT * FROM V\$VERSION"
+db-cli exec --type gaussdb  -H 10.0.0.1           -u root   -p secret "SELECT current_database()"
+db-cli exec --type kingbase -H 10.0.0.1           -u system -p secret "SELECT version()"
 ```
 
 ### SQL 文件导入（`import`）
 
 ```bash
-db-cli import --type mysql     -H 127.0.0.1 -u root  -p secret -d mydb ./dump.sql
-db-cli import --type dameng    -H 127.0.0.1 -P 5236 -u SYSDBA -p secret -d SYSDBA ./schema.sql
-db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema.sql --stop-on-error
+db-cli import --type mysql     -H 127.0.0.1 -u root   -p secret -d mydb   ./dump.sql
+db-cli import --type dameng    -H 127.0.0.1 -P 5236   -u SYSDBA -p secret -d SYSDBA  ./schema.sql
+db-cli import --type oceanbase -H 10.0.0.1  -u app    -p secret -d mydb   ./schema.sql --stop-on-error
+db-cli import --type gaussdb   -H 10.0.0.1            -u root   -p secret -d mydb   ./dump.sql --gaussdb-compat M --create-db --ignore-errors
+db-cli import --type kingbase  -H 10.0.0.1            -u system -p secret -d mydb   ./dump.sql --create-db
 ```
 
 **导入参数：**
@@ -88,8 +91,12 @@ db-cli import --type oceanbase -H 10.0.0.1  -u app   -p secret -d mydb  ./schema
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--batch-size N` | 0 | 每 N 条语句提交一次事务（0 表示不分批） |
+| `--on-conflict` | — | `ignore`：将 `INSERT` 改写为 `INSERT IGNORE`（MySQL）或追加 `ON CONFLICT DO NOTHING`（PG）；同时为 `CREATE TABLE/INDEX` 添加 `IF NOT EXISTS` |
+| `--ignore-errors` | false | 忽略错误继续执行，最终汇总报告所有错误 |
+| `--create-db` | false | 目标数据库不存在时自动创建 |
 | `--stop-on-error` | false | 遇到错误立即终止 |
 | `--verbose` / `-v` | false | 执行前打印每条语句 |
+| `--gaussdb-compat M` | — | 仅限 GaussDB/openGauss：以 `DBCOMPATIBILITY='M'`（MySQL 兼容模式）创建数据库，并将原始 MySQL 语法直接透传给服务器，不做任何客户端改写。反引号、`ENGINE=InnoDB`、`AUTO_INCREMENT`、`INSERT IGNORE` 等均原样发送。配合 `--create-db` 可一步完成建库+导入。 |
 
 导入器逐行流式读取文件（不全量加载到内存），正确处理引号字符串、`--` 和 `/* */` 注释，以及 MySQL 的 `DELIMITER` 指令（存储过程场景）。
 
@@ -177,7 +184,7 @@ db-cli mongo exec -H 127.0.0.1 -d mydb '{"dbStats":1}'
 |------|--------|------|
 | `-t`、`--type` | `mysql` | 数据库类型：`mysql` \| `oceanbase` \| `dameng` \| `gaussdb` \| `kingbase` |
 | `-H`、`--host` | `127.0.0.1` | 主机地址 |
-| `-P`、`--port` | `3306` | 端口（PG wire 类型自动切换为 `5432`，达梦自动切换为 `5236`） |
+| `-P`、`--port` | `3306` | 端口（gaussdb 自动切换为 `8000`，kingbase 自动切换为 `54321`，达梦自动切换为 `5236`） |
 | `-u`、`--user` | | 用户名 |
 | `-p`、`--password` | | 密码 |
 | `-d`、`--database` | | 数据库名 |
@@ -238,7 +245,7 @@ database = "SYSDBA"
 [gaussdb-dev]
 type     = "gaussdb"
 host     = "127.0.0.1"
-port     = 5432
+port     = 8000
 user     = "dev"
 password = "dev"
 database = "devdb"
@@ -285,6 +292,102 @@ SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE OWNER = USER ORDER BY TABLE_NAME;
 -- 查看表结构
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE
 FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = 'YOUR_TABLE' AND OWNER = USER;
+```
+
+## GaussDB / openGauss 使用说明
+
+GaussDB 使用私有的 SHA256 认证机制，与标准 pgx 驱动不兼容。db-cli 使用官方 [openGauss-connector-go-pq](https://gitee.com/opengauss/openGauss-connector-go-pq) 驱动，原生支持 SHA256、MD5SHA256 和 SM3 认证，同时兼容 **openGauss 社区版**和**华为云 GaussDB**。
+
+默认端口：`8000`（未指定 `-P` 时自动切换）。
+
+```bash
+db-cli connect -t gaussdb -H 10.0.0.1 -P 8000 -u root -p secret -d postgres
+db-cli connect --profile gaussdb-prod
+```
+
+### 数据库兼容模式
+
+GaussDB 在建库时可指定兼容模式：
+
+| 模式 | `DBCOMPATIBILITY` | SQL 方言 | 适用场景 |
+|------|-------------------|----------|---------|
+| M 模式 | `'M'` | MySQL 语法（反引号、`ENGINE=InnoDB`、`AUTO_INCREMENT`、`INSERT IGNORE`、`tinyint` 等） | `--gaussdb-compat M` |
+| A 模式 | `'A'`（默认） | 标准 SQL / Oracle 风格；空字符串 `''` 被视为 `NULL` | 标准导入 |
+
+**导入 MySQL dump 到 GaussDB（M 模式，推荐）：**
+
+```bash
+# 自动以 M 模式建库，原始 MySQL SQL 无需任何改写直接导入
+db-cli import -t gaussdb -H 10.0.0.1 -u root -p secret -d mydb \
+  --gaussdb-compat M --create-db --ignore-errors ./dump.sql
+```
+
+**导入 PostgreSQL 风格 SQL 到 GaussDB（A 模式）：**
+
+文件需预先转换：`DATETIME` → `timestamp`、删除 `ON UPDATE CURRENT_TIMESTAMP`、`tinyint` → `smallint`、`longtext` → `text`、删除 `unsigned`、`CREATE SCHEMA IF NOT EXISTS` 去掉 `IF NOT EXISTS`、可能包含空字符串的列去掉 `NOT NULL`。
+
+```bash
+db-cli import -t gaussdb -H 10.0.0.1 -u root -p secret -d mydb \
+  --create-db --ignore-errors ./dump_a_mode.sql
+```
+
+### 元命令行为
+
+| 命令 | 行为 |
+|------|------|
+| `\d` | 列出所有数据库（`SELECT datname FROM pg_database`） |
+| `\dt` | 列出当前 schema 下的所有表（`pg_tables WHERE schemaname = 'public'`） |
+| `\dn` | 列出所有 Schema（`SELECT nspname FROM pg_namespace`） |
+| `\c NAME` | 重新连接到指定数据库 |
+
+### 常用系统查询
+
+```sql
+-- 查看版本
+SELECT version();
+
+-- 查看当前数据库
+SELECT current_database();
+
+-- 列出所有 schema
+SELECT nspname FROM pg_namespace ORDER BY nspname;
+
+-- 查看表结构
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'your_table' AND table_schema = 'public';
+```
+
+## KingbaseDB 使用说明
+
+KingbaseDB（ES 系列）使用 PostgreSQL wire 协议，与 pgx 驱动兼容。
+
+默认端口：`54321`（未指定 `-P` 时自动切换）。
+
+```bash
+db-cli connect -t kingbase -H 10.0.0.1 -P 54321 -u system -p secret -d mydb
+db-cli connect --profile kingbase-prod
+```
+
+### 元命令行为
+
+| 命令 | 行为 |
+|------|------|
+| `\d` | 列出所有数据库 |
+| `\dt` | 列出当前 schema 下的所有表 |
+| `\dn` | 列出所有 schema |
+| `\c NAME` | 重新连接到指定数据库 |
+
+### 配置文件示例
+
+```toml
+[kingbase-prod]
+type     = "kingbase"
+host     = "10.61.120.31"
+port     = 8342
+user     = "system"
+password = "secret"
+database = "mydb"
 ```
 
 ## 环境变量
