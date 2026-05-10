@@ -38,6 +38,12 @@ make build          # outputs bin/db-cli
 make build-all      # linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
 ```
 
+**Check version:**
+
+```bash
+db-cli --version    # db-cli version v2.2.1
+```
+
 ## Quick Start
 
 ### SQL Databases — Interactive REPL (`connect`)

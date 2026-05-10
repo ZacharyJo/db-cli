@@ -12,10 +12,12 @@ import (
 // Format: dm://user:password@host:port?schema=dbname
 func BuildDamengDSN(cfg *config.Config, addr string) string {
 	host, port := splitHostPort(addr, fmt.Sprintf("%d", cfg.Port))
+	user := url.PathEscape(cfg.User)
 	password := url.PathEscape(cfg.Password)
+	schema := url.PathEscape(cfg.Database)
 	dsn := fmt.Sprintf("dm://%s:%s@%s:%s?schema=%s&connectTimeout=%d000",
-		cfg.User, password, host, port, cfg.Database, cfg.ConnectTimeout)
-	if cfg.Password != url.PathEscape(cfg.Password) {
+		user, password, host, port, schema, cfg.ConnectTimeout)
+	if cfg.Password != password {
 		dsn += "&escapeProcess=true"
 	}
 	return dsn

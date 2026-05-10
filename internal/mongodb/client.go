@@ -3,6 +3,7 @@ package mongodb
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -83,11 +84,14 @@ func (c *Client) RunCommand(ctx context.Context, cmdStr string) (string, error) 
 }
 
 func buildURI(host string, port int, user, password string) string {
+	u := &url.URL{
+		Scheme: "mongodb",
+		Host:   fmt.Sprintf("%s:%d", host, port),
+	}
 	if user != "" && password != "" {
-		return fmt.Sprintf("mongodb://%s:%s@%s:%d", user, password, host, port)
+		u.User = url.UserPassword(user, password)
+	} else if user != "" {
+		u.User = url.User(user)
 	}
-	if user != "" {
-		return fmt.Sprintf("mongodb://%s@%s:%d", user, host, port)
-	}
-	return fmt.Sprintf("mongodb://%s:%d", host, port)
+	return u.String()
 }

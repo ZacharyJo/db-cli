@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,8 +25,7 @@ func runExec(_ *cobra.Command, args []string) error {
 	sql := args[0]
 	conn, err := db.Connect(rootCfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 	defer conn.Close()
 
@@ -39,20 +36,17 @@ func runExec(_ *cobra.Command, args []string) error {
 		rows, err := conn.QueryDB().Query(sql)
 		elapsed := time.Since(start)
 		if err != nil {
-			printer.PrintError(err)
-			os.Exit(1)
+			return err
 		}
 		defer rows.Close()
 		if err := printer.PrintRows(rows, elapsed); err != nil {
-			printer.PrintError(err)
-			os.Exit(1)
+			return err
 		}
 	} else {
 		res, err := conn.WriteDB().Exec(sql)
 		elapsed := time.Since(start)
 		if err != nil {
-			printer.PrintError(err)
-			os.Exit(1)
+			return err
 		}
 		printer.PrintResult(res, elapsed)
 	}

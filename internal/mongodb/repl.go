@@ -21,7 +21,9 @@ func NewREPL(client *Client) *REPL {
 
 // Run starts the interactive readline loop.
 func (r *REPL) Run() error {
-	histFile := os.ExpandEnv("$HOME/.db-cli_mongo_history")
+	histDir := os.ExpandEnv("$HOME/.db-cli")
+	_ = os.MkdirAll(histDir, 0o700)
+	histFile := histDir + "/mongo_history"
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:            r.prompt(),
 		HistoryFile:       histFile,

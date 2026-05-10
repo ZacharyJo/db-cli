@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/ZacharyJo/db-cli/internal/config"
 )
@@ -49,7 +50,7 @@ func ensurePgWithProbe(cfg *config.Config) error {
 }
 
 func ensureMysql(db *sql.DB, dbname string) error {
-	_, err := db.Exec("CREATE DATABASE IF NOT EXISTS `" + dbname + "`")
+	_, err := db.Exec("CREATE DATABASE IF NOT EXISTS `" + strings.ReplaceAll(dbname, "`", "``") + "`")
 	if err != nil {
 		return fmt.Errorf("create database %q: %w", dbname, err)
 	}
@@ -58,6 +59,13 @@ func ensureMysql(db *sql.DB, dbname string) error {
 }
 
 func ensurePg(db *sql.DB, dbname string, compatMode string) error {
+	if compatMode != "" {
+		for _, c := range compatMode {
+			if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+				return fmt.Errorf("invalid --gaussdb-compat value %q: only letters, digits, and underscores allowed", compatMode)
+			}
+		}
+	}
 	var exists bool
 	err := db.QueryRow(
 		"SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", dbname,
@@ -69,7 +77,7 @@ func ensurePg(db *sql.DB, dbname string, compatMode string) error {
 		fmt.Printf("Database %q already exists.\n", dbname)
 		return nil
 	}
-	stmt := `CREATE DATABASE "` + dbname + `"`
+	stmt := `CREATE DATABASE "` + strings.ReplaceAll(dbname, `"`, `""`) + `"`
 	if compatMode != "" {
 		stmt += ` DBCOMPATIBILITY '` + compatMode + `'`
 	}

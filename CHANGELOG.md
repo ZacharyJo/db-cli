@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2026-05-10
+
+### Added
+- `--version` / `-v` flag: print the binary version (injected at build time via ldflags)
+
+### Fixed
+- Security: escape SQL identifiers in `--create-db` and `\c` to prevent injection via database names containing special characters (backtick for MySQL wire, double-quote for PostgreSQL wire)
+- Security: apply `pgxQuote` to `user` and `dbname` fields in PostgreSQL-wire DSN (was previously only applied to `password`)
+- Security: use `url.UserPassword` in MongoDB URI builder to correctly percent-encode credentials with special characters
+- Security: percent-escape `user` and `schema` fields in Dameng DSN (was previously only applied to `password`)
+- Security: validate `--gaussdb-compat` value — only alphanumeric characters and underscores are accepted
+- `import --stop-on-error`: now correctly aborts on statement execution errors; both error branches in `flushStmt` were previously identical (dead code), causing `fatalErr` to never be set
+- REPL: semicolon detection changed from `strings.Contains` to `strings.HasSuffix` to avoid false triggers on semicolons inside string literals (e.g. `VALUES('a;b')`)
+- Port defaults for KingbaseDB / GaussDB / Dameng: use cobra `Changed("port")` instead of comparing against the MySQL default `3306`, so explicitly passing `-P 3306` is now respected
+- History files unified under `~/.db-cli/` with per-type filenames (`mysql_history`, `gaussdb_history`, `redis_history`, `mongo_history`, etc.)
+- `connect`, `exec`, `import`: replace `os.Exit(1)` inside `RunE` handlers with `return err` for correct cobra error propagation and non-zero exit code
+- `import`: suppress cobra usage output on runtime errors (`SilenceUsage = true`) — avoids printing the help block when `--ignore-errors` reports accumulated errors at the end
+- Table output: datetime values (e.g. Dameng driver returns `time.Time`) now render as `2006-01-02 15:04:05` instead of splitting across multiple rows; embedded CR/LF in cell values normalized to spaces; tablewriter auto word-wrap disabled
+- `import --ignore-errors` on PostgreSQL-wire (GaussDB / KingbaseDB / openGauss): execute `ROLLBACK` after each failed statement to reset the aborted-transaction state, preventing cascading errors on subsequent statements
+
+---
+
 ## [2.2.0] - 2026-05-09
 
 ### Added

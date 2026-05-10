@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 	"github.com/ZacharyJo/db-cli/internal/db"
 	"github.com/ZacharyJo/db-cli/internal/repl"
@@ -25,8 +22,7 @@ func init() {
 func runConnect(_ *cobra.Command, _ []string) error {
 	conn, err := db.Connect(rootCfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 	defer conn.Close()
 

@@ -1,6 +1,7 @@
 BINARY     := db-cli
 MODULE     := github.com/ZacharyJo/db-cli
-LDFLAGS    := -ldflags="-s -w"
+VERSION    := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+LDFLAGS    := -ldflags="-s -w -X $(MODULE)/cmd.Version=$(VERSION)"
 BUILD_DIR  := bin
 
 PLATFORMS := \

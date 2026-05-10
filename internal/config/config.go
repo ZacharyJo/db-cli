@@ -132,7 +132,7 @@ func BuildPgxDSN(cfg *Config, host, port string) string {
 		sslMode = "disable"
 	}
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
-		host, port, cfg.User, pgxQuote(cfg.Password), cfg.Database, sslMode, cfg.ConnectTimeout)
+		host, port, pgxQuote(cfg.User), pgxQuote(cfg.Password), pgxQuote(cfg.Database), sslMode, cfg.ConnectTimeout)
 	if cfg.SSLCA != "" {
 		dsn += " sslrootcert=" + cfg.SSLCA
 	}

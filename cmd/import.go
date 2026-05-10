@@ -60,19 +60,16 @@ func runImport(_ *cobra.Command, args []string) error {
 
 	if importCreateDB {
 		if rootCfg.Database == "" {
-			fmt.Fprintln(os.Stderr, "ERROR: --create-db requires -d <database>")
-			os.Exit(1)
+			return fmt.Errorf("--create-db requires -d <database>")
 		}
 		if err := db.EnsureDatabase(rootCfg); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 	}
 
 	conn, err := db.Connect(rootCfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 	defer conn.Close()
 
@@ -91,8 +88,8 @@ func runImport(_ *cobra.Command, args []string) error {
 		IgnoreErrors: importIgnoreErrors,
 		// When GaussDB is in MySQL-compat mode, pass raw MySQL syntax through without rewriting.
 		MysqlCompat: rootCfg.DBType == config.DBGaussDB && importGaussCompat == "M",
-		// KingbaseDB (standard PG wire) uses ON CONFLICT DO NOTHING.
-		PgWire:   rootCfg.DBType == config.DBKingbase,
+		// KingbaseDB and GaussDB both use the PostgreSQL wire protocol.
+		PgWire:   rootCfg.DBType == config.DBKingbase || rootCfg.DBType == config.DBGaussDB,
 		CreateDB: importCreateDB,
 		Cfg:      rootCfg,
 		OpenDB: func(cfg *config.Config) (*sql.DB, error) {
@@ -110,7 +107,7 @@ func runImport(_ *cobra.Command, args []string) error {
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "  - %v\n", e)
 		}
-		os.Exit(1)
+		return fmt.Errorf("%d import error(s)", len(errs))
 	}
 	return nil
 }

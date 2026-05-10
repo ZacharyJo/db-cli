@@ -206,11 +206,15 @@ func execStatements(db *sql.DB, r io.Reader, opts Options) (int, []error) {
 			fmt.Printf("SQL> %s\n", s)
 		}
 		if _, err := conn.ExecContext(ctx, s); err != nil {
-			if opts.IgnoreErrors {
-				errs = append(errs, fmt.Errorf("exec error: %w\nStatement: %s", err, s))
-				return
-			}
 			errs = append(errs, fmt.Errorf("exec error: %w\nStatement: %s", err, s))
+			if opts.PgWire {
+				// A failed statement puts the PG-wire connection in an aborted
+				// transaction state; ROLLBACK resets it so subsequent statements run.
+				_, _ = conn.ExecContext(ctx, "ROLLBACK")
+			}
+			if !opts.IgnoreErrors {
+				fatalErr = true
+			}
 			return
 		}
 		count++

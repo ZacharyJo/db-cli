@@ -38,7 +38,9 @@ func New(conn *db.Connector, cfg *config.Config, format string) *REPL {
 
 // Run starts the interactive readline loop. Returns when the user exits.
 func (r *REPL) Run() error {
-	histFile := os.ExpandEnv("$HOME/.db-cli_history")
+	histDir := os.ExpandEnv("$HOME/.db-cli")
+	_ = os.MkdirAll(histDir, 0o700)
+	histFile := histDir + "/" + r.dbType + "_history"
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:            r.prompt(false),
 		HistoryFile:       histFile,
@@ -83,8 +85,8 @@ func (r *REPL) Run() error {
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 
-		// Execute once we see a ';' at the end of the accumulated buffer.
-		if strings.Contains(line, ";") {
+		// Execute once we see a ';' at the end of the line.
+		if strings.HasSuffix(strings.TrimSpace(line), ";") {
 			sql := strings.TrimRight(strings.TrimSpace(buf.String()), ";")
 			buf.Reset()
 			if sql == "" {
@@ -185,13 +187,13 @@ func (r *REPL) switchDatabase(dbname string) {
 		r.cfg = &newCfg
 	case r.cfg.IsDamengNative():
 		// Dameng: SET SCHEMA switches the active schema on the existing connection.
-		if _, err := r.conn.WriteDB().Exec(`SET SCHEMA "` + dbname + `"`); err != nil {
+		if _, err := r.conn.WriteDB().Exec(`SET SCHEMA "` + strings.ReplaceAll(dbname, `"`, `""`) + `"`); err != nil {
 			fmt.Printf("ERROR: %v\n", err)
 			return
 		}
 	default:
 		// MySQL wire: USE statement switches the database on existing connections.
-		if _, err := r.conn.WriteDB().Exec("USE `" + dbname + "`"); err != nil {
+		if _, err := r.conn.WriteDB().Exec("USE `" + strings.ReplaceAll(dbname, "`", "``") + "`"); err != nil {
 			fmt.Printf("ERROR: %v\n", err)
 			return
 		}

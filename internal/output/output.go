@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/olekukonko/tablewriter"
@@ -91,6 +92,7 @@ func (p *Printer) printTable(cols []string, data [][]string) error {
 	tw := tablewriter.NewWriter(p.Out)
 	tw.SetHeader(cols)
 	tw.SetAutoFormatHeaders(false)
+	tw.SetAutoWrapText(false)
 	tw.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 	tw.SetCenterSeparator("|")
 	for _, row := range data {
@@ -132,10 +134,14 @@ func formatValue(v interface{}) string {
 	if v == nil {
 		return "NULL"
 	}
+	var s string
 	switch t := v.(type) {
 	case []byte:
-		return string(t)
+		s = string(t)
+	case time.Time:
+		return t.Format("2006-01-02 15:04:05")
 	default:
-		return fmt.Sprintf("%v", t)
+		s = fmt.Sprintf("%v", t)
 	}
+	return strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ").Replace(s)
 }

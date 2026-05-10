@@ -10,13 +10,18 @@ import (
 	"github.com/ZacharyJo/db-cli/internal/config"
 )
 
+// Version is set at build time via -ldflags "-X github.com/ZacharyJo/db-cli/cmd.Version=x.y.z".
+var Version = "dev"
+
 var (
 	cfgFile string
 	rootCfg = config.DefaultConfig()
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "db-cli",
+	SilenceUsage: true,
+	Version:      Version,
+	Use:          "db-cli",
 	Short: "A cross-database CLI tool supporting MySQL, OceanBase, GaussDB, KingbaseDB, Dameng, Redis, and MongoDB",
 	Long: `db-cli is a unified CLI for connecting to and querying multiple database types:
   - MySQL / MariaDB
@@ -102,14 +107,15 @@ func initConfig() {
 		}
 	}
 
-	// Default port by DB type if user did not change it.
-	if rootCfg.DBType == config.DBKingbase && rootCfg.Port == 3306 {
-		rootCfg.Port = 54321
-	}
-	if rootCfg.DBType == config.DBGaussDB && rootCfg.Port == 3306 {
-		rootCfg.Port = 8000
-	}
-	if rootCfg.DBType == config.DBDameng && rootCfg.Port == 3306 {
-		rootCfg.Port = 5236
+	// Default port by DB type if user did not explicitly set -P.
+	if !rootCmd.PersistentFlags().Changed("port") {
+		switch rootCfg.DBType {
+		case config.DBKingbase:
+			rootCfg.Port = 54321
+		case config.DBGaussDB:
+			rootCfg.Port = 8000
+		case config.DBDameng:
+			rootCfg.Port = 5236
+		}
 	}
 }
