@@ -1,5 +1,10 @@
 # db-cli
 
+[![CI](https://github.com/ZacharyJo/db-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacharyJo/db-cli/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/ZacharyJo/db-cli)](https://github.com/ZacharyJo/db-cli/releases)
+
 统一的数据库命令行工具，支持 SQL 和 NoSQL 多种数据库。
 
 [English Documentation](README.md)

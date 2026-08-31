@@ -1,5 +1,10 @@
 # db-cli
 
+[![CI](https://github.com/ZacharyJo/db-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacharyJo/db-cli/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/ZacharyJo/db-cli)](https://github.com/ZacharyJo/db-cli/releases)
+
 A unified command-line tool for connecting to and querying multiple databases — SQL and NoSQL alike.
 
 [中文文档](README_CN.md)
